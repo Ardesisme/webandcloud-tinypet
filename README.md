@@ -2,7 +2,7 @@
 
 * precondition: you have a GCP project selected with billing activated. 
 * go to GCP console and open a cloud shell
-* git clone https://github.com/momo54/webandcloud.git
+* git clone https://github.com/Ardesisme/webandcloud-tinypet.git
 * cd webandcloud
 * mvn appengine:deploy (to deploy)
 * mvn appengine:run (to debug in dev server)

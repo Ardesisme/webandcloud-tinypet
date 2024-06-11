@@ -38,8 +38,8 @@ import com.google.appengine.api.datastore.Transaction;
 
 @Api(name = "myApi",
      version = "v1",
-     audiences = "927375242383-t21v9ml38tkh2pr30m4hqiflkl3jfohl.apps.googleusercontent.com",
-  	 clientIds = {"927375242383-t21v9ml38tkh2pr30m4hqiflkl3jfohl.apps.googleusercontent.com",
+     audiences = {"927375242383-t21v9ml38tkh2pr30m4hqiflkl3jfohl.apps.googleusercontent.com","1017665012427-bkojq9fgh17ojedij4d08ea419u3s8v6.apps.googleusercontent.com" },
+  	 clientIds = {"927375242383-t21v9ml38tkh2pr30m4hqiflkl3jfohl.apps.googleusercontent.com", "1017665012427-bkojq9fgh17ojedij4d08ea419u3s8v6.apps.googleusercontent.com",
         "927375242383-jm45ei76rdsfv7tmjv58tcsjjpvgkdje.apps.googleusercontent.com"},
      namespace =
      @ApiNamespace(
@@ -48,7 +48,7 @@ import com.google.appengine.api.datastore.Transaction;
 		   packagePath = "")
      )
 
-public class ScoreEndpoint {
+public class PetitionEndpoint {
 
 
 	Random r = new Random();
@@ -117,15 +117,31 @@ public class ScoreEndpoint {
 		return e;
 	}
 
-	@ApiMethod(name = "postMessage", httpMethod = HttpMethod.POST)
-	public Entity postMessage(PostMessage pm) {
+	// @ApiMethod(name = "postMessage", httpMethod = HttpMethod.POST)
+	// public Entity postMessage(PostMessage pm) {
 
-		Entity e = new Entity("Post"); // quelle est la clef ?? non specifié -> clef automatique
-		e.setProperty("owner", pm.owner);
-		e.setProperty("url", pm.url);
-		e.setProperty("body", pm.body);
-		e.setProperty("likec", 0);
-		e.setProperty("date", new Date());
+	// 	Entity e = new Entity("Post"); // quelle est la clef ?? non specifié -> clef automatique
+	// 	e.setProperty("owner", pm.owner);
+	// 	e.setProperty("url", pm.url);
+	// 	e.setProperty("body", pm.body);
+	// 	e.setProperty("likec", 0);
+	// 	e.setProperty("date", new Date());
+
+	// 	DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+	// 	Transaction txn = datastore.beginTransaction();
+	// 	datastore.put(e);
+	// 	txn.commit();
+	// 	return e;
+	// }
+
+	@ApiMethod(name = "createPetition", httpMethod = HttpMethod.POST)
+	public Entity createPetition(Petition petition) {
+
+		Entity e = new Entity("Petition"); // quelle est la clef ?? non specifié -> clef automatique
+		e.setProperty("title", petition.title);
+		e.setProperty("owner", "KIWIZ");
+		e.setProperty("description", petition.description);
+		// e.setProperty("date", new Date());
 
 		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
 		Transaction txn = datastore.beginTransaction();
