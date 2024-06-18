@@ -150,6 +150,80 @@ public class PetitionEndpoint {
 		return e;
 	}
 
+	//fonctionnel : affiche des pétitions du datastore.
+	// @ApiMethod(name = "myPetitions", httpMethod = HttpMethod.GET)
+	// // public CollectionResponse<Entity> myPetitions(@Named("name") String name, @Nullable @Named("next") String cursorString)
+	// public CollectionResponse<Entity> myPetitions(@Nullable @Named("next") String cursorString)
+	// {
+
+	//     Query q = new Query("Petition");
+
+	//     // https://cloud.google.com/appengine/docs/standard/python/datastore/projectionqueries#Indexes_for_projections
+	//     //q.addProjection(new PropertyProjection("body", String.class));
+	//     //q.addProjection(new PropertyProjection("date", java.util.Date.class));
+	//     //q.addProjection(new PropertyProjection("likec", Integer.class));
+	//     //q.addProjection(new PropertyProjection("url", String.class));
+
+	//     // looks like a good idea but...
+	//     // generate a DataStoreNeedIndexException -> 
+	//     // require compositeIndex on owner + date
+	//     // Explosion combinatoire.
+	//     // q.addSort("date", SortDirection.DESCENDING);
+	    
+	//     DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+	//     PreparedQuery pq = datastore.prepare(q);
+	    
+	//     FetchOptions fetchOptions = FetchOptions.Builder.withLimit(2);
+	    
+	//     if (cursorString != null) {
+	// 	fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
+	// 	}
+	    
+	//     QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
+	//     cursorString = results.getCursor().toWebSafeString();
+	    
+	//     return CollectionResponse.<Entity>builder().setItems(results).setNextPageToken(cursorString).build();
+	    
+	// }
+
+		@ApiMethod(name = "myPetitions", httpMethod = HttpMethod.GET)
+	// public CollectionResponse<Entity> myPetitions(@Named("name") String name, @Nullable @Named("next") String cursorString)
+	public CollectionResponse<Entity> myPetitions(@Nullable @Named("next") String cursorString)
+	{
+
+	    Query q = new Query("Petition").setFilter(new FilterPredicate("owner", FilterOperator.EQUAL, "KIWIZ"));
+
+	    // https://cloud.google.com/appengine/docs/standard/python/datastore/projectionqueries#Indexes_for_projections
+	    //q.addProjection(new PropertyProjection("body", String.class));
+	    //q.addProjection(new PropertyProjection("date", java.util.Date.class));
+	    //q.addProjection(new PropertyProjection("likec", Integer.class));
+	    //q.addProjection(new PropertyProjection("url", String.class));
+
+	    // looks like a good idea but...
+	    // generate a DataStoreNeedIndexException -> 
+	    // require compositeIndex on owner + date
+	    // Explosion combinatoire.
+	    // q.addSort("date", SortDirection.DESCENDING);
+	    
+	    DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+	    PreparedQuery pq = datastore.prepare(q);
+	    
+	    FetchOptions fetchOptions = FetchOptions.Builder.withLimit(2);
+	    
+	    if (cursorString != null) {
+		fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
+		}
+	    
+	    QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
+	    cursorString = results.getCursor().toWebSafeString();
+	    
+	    return CollectionResponse.<Entity>builder().setItems(results).setNextPageToken(cursorString).build();
+	    
+	}
+
+
+	
+	
 	@ApiMethod(name = "mypost", httpMethod = HttpMethod.GET)
 	public CollectionResponse<Entity> mypost(@Named("name") String name, @Nullable @Named("next") String cursorString) {
 

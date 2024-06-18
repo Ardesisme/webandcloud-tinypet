@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Voir les Pétitions KIWIZ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css">
+    <script defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
+    <script src="https://unpkg.com/mithril/mithril.js"></script>
+</head>
+<body>
+    <script>
+        var PetitionList = {
+            petitions: [],
+            loadList: function() {
+                var username = "KIWIZ"; // Remplacez par le nom d'utilisateur approprié
+                console.log("Envoi de la requête pour l'utilisateur:", username);
+                return m.request({
+                    method: "GET",
+                    url: "_ah/api/myApi/v1/myPetitions",
+                    params: { name: username },
+                    extract: function(xhr) {
+                        if (xhr.status !== 200) {
+                            console.error("Erreur de l'API, statut:", xhr.status);
+                            console.error("Réponse de l'API:", xhr.responseText);
+                            return {error: "Erreur API"};
+                        }
+                        return JSON.parse(xhr.responseText);
+                    }
+                })
+                .then(function(result) {
+                    if (result.error) {
+                        console.error("Erreur renvoyée par l'API:", result.error);
+                    } else {
+                        PetitionList.petitions = result.items;
+                        console.log("Pétitions récupérées:", PetitionList.petitions);
+                    }
+                })
+                .catch(function(error) {
+                    console.error("Erreur lors de la récupération des pétitions:", error);
+                });
+            },
+            view: function() {
+                return m("div", {class: "container"}, [
+                    m("h1", {class: "title"}, "Pétitions KIWIZ"),
+                    m("button", {class: "button is-link", onclick: PetitionList.loadList}, "Voir les pétitions"),
+                    m("div", {class: "list"}, PetitionList.petitions.map(function(petition) {
+                        return m("div", {class: "list-item"}, [
+                            m("h2", {class: "subtitle"}, petition.properties.title),
+                            m("p", "Propriétaire: " + petition.properties.owner),
+                            m("p", "Description: " + petition.properties.description)
+                        ]);
+                    }))
+                ]);
+            }
+        };
+
+        m.mount(document.body, PetitionList);
+    </script>
+</body>
+</html>
