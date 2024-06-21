@@ -2,23 +2,24 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Voir mes Pétitions</title>
+    <title>Voir les Pétitions</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css">
     <script defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
     <script src="https://unpkg.com/mithril/mithril.js"></script>
 </head>
 <body>
+
     <script>
         var PetitionList = {
             petitions: [],
+            username: "",
             loadList: function() {
-                var username = "KIWIZ"; // Remplacez par le nom d'utilisateur approprié
-                console.log("Envoi de la requête pour l'utilisateur:", username);
+                console.log("Envoi de la requête pour l'utilisateur:", PetitionList.username);
                 return m.request({
                     method: "GET",
-                    url: "_ah/api/myApi/v1/myPetitions",
-                    params: { name: username },
+                    url: "_ah/api/myApi/v1/listSignedPetitions",
+                    params: { name: PetitionList.username },
                     extract: function(xhr) {
                         if (xhr.status !== 200) {
                             console.error("Erreur de l'API, statut:", xhr.status);
@@ -42,7 +43,19 @@
             },
             view: function() {
                 return m("div", {class: "container"}, [
-                    m("h1", {class: "title"}, "Pétitions KIWIZ"),
+                    m("h1", {class: "title"}, "Pétitions"),
+                    m("div", {class: "field"}, [
+                        m("label", {class: "label"}, "Nom d'utilisateur"),
+                        m("div", {class: "control"}, [
+                            m("input", {
+                                class: "input",
+                                type: "text",
+                                placeholder: "Entrer le nom d'utilisateur",
+                                oninput: function(e) { PetitionList.username = e.target.value; },
+                                value: PetitionList.username
+                            })
+                        ])
+                    ]),
                     m("button", {class: "button is-link", onclick: PetitionList.loadList}, "Voir les pétitions"),
                     m("div", {class: "list"}, PetitionList.petitions.map(function(petition) {
                         return m("div", {class: "list-item"}, [

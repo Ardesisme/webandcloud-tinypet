@@ -92,24 +92,26 @@ public class PetitionEndpoint {
         return signatureEntity;
     }
 
-    @ApiMethod(name = "myPetitions", httpMethod = ApiMethod.HttpMethod.GET)
-    public CollectionResponse<Entity> myPetitions(@Nullable @Named("next") String cursorString) {
-        Query q = new Query("Petition").setFilter(new FilterPredicate("owner", FilterOperator.EQUAL, "KIWIZ"));
+    @ApiMethod(name = "myPetitions", path = "myPetitions", httpMethod = ApiMethod.HttpMethod.GET)
+public CollectionResponse<Entity> myPetitions(@Named("name") String ownerName, @Nullable @Named("next") String cursorString) {
+    Query q = new Query("Petition").setFilter(new FilterPredicate("owner", FilterOperator.EQUAL, ownerName));
 
-        DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-        PreparedQuery pq = datastore.prepare(q);
+    DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+    PreparedQuery pq = datastore.prepare(q);
 
-        FetchOptions fetchOptions = FetchOptions.Builder.withLimit(2);
-
-        if (cursorString != null) {
-            fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
-        }
-
-        QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
-        cursorString = results.getCursor().toWebSafeString();
-
-        return CollectionResponse.<Entity>builder().setItems(results).setNextPageToken(cursorString).build();
+    FetchOptions fetchOptions = FetchOptions.Builder.withLimit(10);
+    if (cursorString != null) {
+        fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
     }
+
+    QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
+    cursorString = results.getCursor().toWebSafeString();
+
+    return CollectionResponse.<Entity>builder()
+            .setItems(results)
+            .setNextPageToken(cursorString)
+            .build();
+}
 
     @ApiMethod(name = "petitions", httpMethod = ApiMethod.HttpMethod.GET)
     public CollectionResponse<Entity> petitions(@Nullable @Named("next") String cursorString) {
@@ -155,12 +157,17 @@ public Entity addTag(TagRequest tagRequest) throws Exception {
 }
 
 @ApiMethod(name = "findPetitionsByTag", path = "findPetitionsByTag", httpMethod = ApiMethod.HttpMethod.GET)
-public List<Petition> findPetitionsByTag(@Named("tag") String tag) {
+public CollectionResponse<Petition> findPetitionsByTag(@Named("tag") String tag, @Nullable @Named("next") String cursorString) {
     Query query = new Query("Petition")
             .setFilter(new Query.FilterPredicate("tags", Query.FilterOperator.EQUAL, tag))
             .addSort("createdAt", Query.SortDirection.DESCENDING);
 
-    List<Entity> petitionEntities = datastore.prepare(query).asList(FetchOptions.Builder.withDefaults());
+    FetchOptions fetchOptions = FetchOptions.Builder.withLimit(20);
+    if (cursorString != null) {
+        fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
+    }
+
+    QueryResultList<Entity> petitionEntities = datastore.prepare(query).asQueryResultList(fetchOptions);
 
     List<Petition> petitions = new ArrayList<>();
     for (Entity entity : petitionEntities) {
@@ -174,7 +181,10 @@ public List<Petition> findPetitionsByTag(@Named("tag") String tag) {
         petitions.add(petition);
     }
 
-    return petitions;
+    return CollectionResponse.<Petition>builder()
+            .setItems(petitions)
+            .setNextPageToken(petitionEntities.getCursor().toWebSafeString())
+            .build();
 }
 
     
@@ -200,11 +210,16 @@ public List<Petition> findPetitionsByTag(@Named("tag") String tag) {
     }
 
     @ApiMethod(name = "getTop100Petitions", path = "getTop100Petitions", httpMethod = ApiMethod.HttpMethod.GET)
-public List<Petition> getTop100Petitions() {
+public CollectionResponse<Petition> getTop100Petitions(@Nullable @Named("next") String cursorString) {
     Query query = new Query("Petition")
             .addSort("createdAt", Query.SortDirection.DESCENDING);
 
-    List<Entity> petitionEntities = datastore.prepare(query).asList(FetchOptions.Builder.withLimit(100));
+    FetchOptions fetchOptions = FetchOptions.Builder.withLimit(100);
+    if (cursorString != null) {
+        fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
+    }
+
+    QueryResultList<Entity> petitionEntities = datastore.prepare(query).asQueryResultList(fetchOptions);
 
     List<Petition> petitions = new ArrayList<>();
     for (Entity entity : petitionEntities) {
@@ -218,7 +233,10 @@ public List<Petition> getTop100Petitions() {
         petitions.add(petition);
     }
 
-    return petitions;
+    return CollectionResponse.<Petition>builder()
+            .setItems(petitions)
+            .setNextPageToken(petitionEntities.getCursor().toWebSafeString())
+            .build();
 }
 
 @ApiMethod(name = "getSignatures", path = "getSignatures", httpMethod = ApiMethod.HttpMethod.GET)

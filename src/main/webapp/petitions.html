@@ -12,15 +12,18 @@
     <script>
         var PetitionList = {
             petitions: [],
-            loadList: function() {
+            nextPageToken: null,
+            loadList: function(cursor) {
+                var params = cursor ? { next: cursor } : {};
                 return m.request({
                     method: "GET",
                     url: "_ah/api/myApi/v1/petitions",
+                    params: params,
                     extract: function(xhr) {
                         if (xhr.status !== 200) {
                             console.error("Erreur de l'API, statut:", xhr.status);
                             console.error("Réponse de l'API:", xhr.responseText);
-                            return {error: "Erreur API"};
+                            return { error: "Erreur API" };
                         }
                         return JSON.parse(xhr.responseText);
                     }
@@ -29,9 +32,8 @@
                     console.log("Pétitions récupérées:", result);
                     if (result.error) {
                         console.error("Erreur renvoyée par l'API:", result.error);
-                    } else {;
-                        PetitionList.petitions = result.items != null ? result.items.map(function(petition) {
-
+                    } else {
+                        var newPetitions = Array.isArray(result.items) ? result.items.map(function(petition) {
                             return {
                                 id: petition.key.id,
                                 title: petition.properties.title,
@@ -42,6 +44,8 @@
                                 newTag: ""
                             };
                         }) : [];
+                        PetitionList.petitions = PetitionList.petitions.concat(newPetitions);
+                        PetitionList.nextPageToken = result.nextPageToken;
                         console.log("Pétitions récupérées après mappage:", PetitionList.petitions);
                     }
                 })
@@ -53,7 +57,7 @@
                 return m.request({
                     method: "POST",
                     url: "_ah/api/myApi/v1/signPetition",
-                    body: { petitionId: petitionId, userId: "KIWIZIO" },
+                    body: { petitionId: petitionId, userId: "userTest" },
                     headers: {
                         "Content-Type": "application/json"
                     }
@@ -91,23 +95,24 @@
                 return date.toLocaleDateString("fr-FR", options) + " " + date.toLocaleTimeString("fr-FR");
             },
             view: function() {
-                return m("div", {class: "container"}, [
-                    m("h1", {class: "title"}, "Pétitions KIWIZ"),
-                    m("button", {class: "button is-link", onclick: PetitionList.loadList}, "Voir les pétitions"),
-                    m("button", {class: "button is-info", onclick: function() { m.route.set("/search") }}, "Rechercher par Tag"),
-                    m("button", {class: "button is-success", onclick: function() { m.route.set("/top100") }}, "Top 100 Pétitions"),
-                    m("div", {class: "list"}, PetitionList.petitions.map(PetitionList.renderPetition))
+                return m("div", { class: "container" }, [
+                    m("h1", { class: "title" }, "Pétitions"),
+                    m("button", { class: "button is-link", onclick: function() { PetitionList.loadList(null); } }, "Voir les pétitions"),
+                    m("button", { class: "button is-info", onclick: function() { m.route.set("/search") } }, "Rechercher par Tag"),
+                    m("button", { class: "button is-success", onclick: function() { m.route.set("/top100") } }, "Top 100 Pétitions"),
+                    m("div", { class: "list" }, PetitionList.petitions.map(PetitionList.renderPetition)),
+                    PetitionList.nextPageToken ? m("button", { class: "button is-link", onclick: function() { PetitionList.loadList(PetitionList.nextPageToken); } }, "Voir plus") : null
                 ]);
             },
             renderPetition: function(petition) {
-                return m("div", {class: "list-item"}, [
-                    m("h2", {class: "subtitle"}, petition.title),
+                return m("div", { class: "list-item" }, [
+                    m("h2", { class: "subtitle" }, petition.title),
                     m("p", "Propriétaire: " + petition.owner),
                     m("p", "Description: " + petition.description),
                     m("p", "Créé le: " + PetitionList.formatDateTime(petition.createdAt)),
-                    m("p", "KIWIZ id : " + petition.id),
-                    m("div", {class: "tags"}, (petition.tags || []).map(function(tag) {
-                        return m("span", {class: "tag is-info"}, tag);
+                    m("p", "id : " + petition.id),
+                    m("div", { class: "tags" }, (petition.tags || []).map(function(tag) {
+                        return m("span", { class: "tag is-info" }, tag);
                     })),
                     m("input", {
                         type: "text",
@@ -137,16 +142,21 @@
         var SearchPage = {
             tag: "",
             petitions: [],
-            search: function() {
+            nextPageToken: null,
+            search: function(cursor) {
+                var params = { tag: SearchPage.tag };
+                if (cursor) {
+                    params.next = cursor;
+                }
                 return m.request({
                     method: "GET",
                     url: "_ah/api/myApi/v1/findPetitionsByTag",
-                    params: { tag: SearchPage.tag },
+                    params: params,
                     extract: function(xhr) {
                         if (xhr.status !== 200) {
                             console.error("Erreur de l'API, statut:", xhr.status);
                             console.error("Réponse de l'API:", xhr.responseText);
-                            return {error: "Erreur API"};
+                            return { error: "Erreur API" };
                         }
                         return JSON.parse(xhr.responseText);
                     }
@@ -156,8 +166,19 @@
                     if (result.error) {
                         console.error("Erreur renvoyée par l'API:", result.error);
                     } else {
-                        // Assurez-vous que la réponse est toujours un tableau
-                        SearchPage.petitions = Array.isArray(result.items) ? result.items : [];
+                        var newPetitions = Array.isArray(result.items) ? result.items.map(function(petition) {
+                            return {
+                                id: petition.id,
+                                title: petition.title,
+                                owner: petition.owner,
+                                description: petition.description,
+                                createdAt: petition.createdAt,
+                                tags: petition.tags,
+                                newTag: ""
+                            };
+                        }) : [];
+                        SearchPage.petitions = SearchPage.petitions.concat(newPetitions);
+                        SearchPage.nextPageToken = result.nextPageToken;
                         console.log("Pétitions récupérées après mappage:", SearchPage.petitions);
                     }
                 })
@@ -166,11 +187,11 @@
                 });
             },
             view: function() {
-                return m("div", {class: "container"}, [
-                    m("h1", {class: "title"}, "Rechercher des Pétitions par Tag"),
-                    m("div", {class: "field"}, [
-                        m("label", {class: "label"}, "Tag"),
-                        m("div", {class: "control"}, [
+                return m("div", { class: "container" }, [
+                    m("h1", { class: "title" }, "Rechercher des Pétitions par Tag"),
+                    m("div", { class: "field" }, [
+                        m("label", { class: "label" }, "Tag"),
+                        m("div", { class: "control" }, [
                             m("input", {
                                 class: "input",
                                 type: "text",
@@ -180,38 +201,31 @@
                             })
                         ])
                     ]),
-                    m("button", {class: "button is-link", onclick: SearchPage.search}, "Rechercher"),
-                    Array.isArray(SearchPage.petitions) ? m("div", {class: "list"}, SearchPage.petitions.map(function(petition) {
-                        return m("div", {class: "list-item"}, [
-                            m("h2", {class: "subtitle"}, petition.title),
-                            m("p", "Propriétaire: " + petition.owner),
-                            m("p", "Description: " + petition.description),
-                            m("p", "Créé le: " + PetitionList.formatDateTime(petition.createdAt)),
-                            m("div", {class: "tags"}, (petition.tags || []).map(function(tag) {
-                                return m("span", {class: "tag is-info"}, tag);
-                            }))
-                        ]);
-                    })) : m("p", "Aucune pétition trouvée"),
-                    m("button", {class: "button is-link", onclick: function() { m.route.set("/") }}, "Retour à la liste des pétitions")
+                    m("button", { class: "button is-link", onclick: function() { SearchPage.search(null); } }, "Rechercher"),
+                    m("div", { class: "list" }, SearchPage.petitions.map(PetitionList.renderPetition)),
+                    SearchPage.nextPageToken ? m("button", { class: "button is-link", onclick: function() { SearchPage.search(SearchPage.nextPageToken); } }, "Voir plus") : null,
+                    m("button", { class: "button is-link", onclick: function() { m.route.set("/") } }, "Retour à la liste des pétitions")
                 ]);
             }
         };
 
-
         var Top100Page = {
             petitions: [],
+            nextPageToken: null,
             oninit: function() {
-                Top100Page.loadTop100();
+                Top100Page.loadTop100(null);
             },
-            loadTop100: function() {
+            loadTop100: function(cursor) {
+                var params = cursor ? { next: cursor } : {};
                 return m.request({
                     method: "GET",
                     url: "_ah/api/myApi/v1/getTop100Petitions",
+                    params: params,
                     extract: function(xhr) {
                         if (xhr.status !== 200) {
                             console.error("Erreur de l'API, statut:", xhr.status);
                             console.error("Réponse de l'API:", xhr.responseText);
-                            return {error: "Erreur API"};
+                            return { error: "Erreur API" };
                         }
                         return JSON.parse(xhr.responseText);
                     }
@@ -221,9 +235,19 @@
                     if (result.error) {
                         console.error("Erreur renvoyée par l'API:", result.error);
                     } else {
-                    console.log("Top 100 pétitions récupérées: 1", result.items);
-
-                        Top100Page.petitions = result.items !== null ? result.items : [];
+                        var newPetitions = Array.isArray(result.items) ? result.items.map(function(petition) {
+                            return {
+                                id : petition.id,
+                                title: petition.title,
+                                owner: petition.owner,
+                                description: petition.description,
+                                createdAt: petition.createdAt,
+                                tags: petition.tags,
+                                newTag: ""
+                            };
+                        }) : [];
+                        Top100Page.petitions = Top100Page.petitions.concat(newPetitions);
+                        Top100Page.nextPageToken = result.nextPageToken;
                         console.log("Top 100 pétitions après mappage:", Top100Page.petitions);
                     }
                 })
@@ -232,20 +256,11 @@
                 });
             },
             view: function() {
-                return m("div", {class: "container"}, [
-                    m("h1", {class: "title"}, "Top 100 Pétitions"),
-                    m("div", {class: "list"}, Top100Page.petitions.map(function(petition) {
-                        return m("div", {class: "list-item"}, [
-                            m("h2", {class: "subtitle"}, petition.title),
-                            m("p", "Propriétaire: " + petition.owner),
-                            m("p", "Description: " + petition.description),
-                            m("p", "Créé le: " + PetitionList.formatDateTime(petition.createdAt)),
-                            m("div", {class: "tags"}, (petition.tags || []).map(function(tag) {
-                                return m("span", {class: "tag is-info"}, tag);
-                            }))
-                        ]);
-                    })),
-                    m("button", {class: "button is-link", onclick: function() { m.route.set("/") }}, "Retour à la liste des pétitions")
+                return m("div", { class: "container" }, [
+                    m("h1", { class: "title" }, "Top 100 Pétitions"),
+                    m("div", { class: "list" }, Top100Page.petitions.map(PetitionList.renderPetition)),
+                    Top100Page.nextPageToken ? m("button", { class: "button is-link", onclick: function() { Top100Page.loadTop100(Top100Page.nextPageToken); } }, "Voir plus") : null,
+                    m("button", { class: "button is-link", onclick: function() { m.route.set("/") } }, "Retour à la liste des pétitions")
                 ]);
             }
         };
@@ -258,7 +273,6 @@
                 SignaturesPage.loadSignatures();
             },
             loadSignatures: function() {
-                console.log("KIWIZ 56 : ", SignaturesPage.petitionId);
                 return m.request({
                     method: "GET",
                     url: "_ah/api/myApi/v1/getSignatures",
@@ -267,18 +281,17 @@
                         if (xhr.status !== 200) {
                             console.error("Erreur de l'API, statut:", xhr.status);
                             console.error("Réponse de l'API:", xhr.responseText);
-                            return {error: "Erreur API"};
+                            return { error: "Erreur API" };
                         }
                         return JSON.parse(xhr.responseText);
                     }
                 })
                 .then(function(result) {
                     console.log("Signatures récupérées:", result);
-                    console.log("Signatures récupérées 1:", result.items);
                     if (result.error) {
                         console.error("Erreur renvoyée par l'API:", result.error);
                     } else {
-                        SignaturesPage.signatures = result.items !== null ? result.items : [];
+                        SignaturesPage.signatures = result.items;
                         console.log("Signatures récupérées après mappage:", SignaturesPage.signatures);
                     }
                 })
@@ -287,12 +300,12 @@
                 });
             },
             view: function() {
-                return m("div", {class: "container"}, [
-                    m("h1", {class: "title"}, "Signatures de la Pétition"),
-                    m("div", {class: "list"}, SignaturesPage.signatures.map(function(signature) {
-                        return m("div", {class: "list-item"}, signature);
+                return m("div", { class: "container" }, [
+                    m("h1", { class: "title" }, "Signatures de la Pétition"),
+                    m("div", { class: "list" }, SignaturesPage.signatures.map(function(signature) {
+                        return m("div", { class: "list-item" }, signature);
                     })),
-                    m("button", {class: "button is-link", onclick: function() { m.route.set("/") }}, "Retour à la liste des pétitions")
+                    m("button", { class: "button is-link", onclick: function() { m.route.set("/") } }, "Retour à la liste des pétitions")
                 ]);
             }
         };
