@@ -274,10 +274,11 @@
                 })
                 .then(function(result) {
                     console.log("Signatures récupérées:", result);
+                    console.log("Signatures récupérées 1:", result.items);
                     if (result.error) {
                         console.error("Erreur renvoyée par l'API:", result.error);
                     } else {
-                        SignaturesPage.signatures = Array.isArray(result) ? result : [];
+                        SignaturesPage.signatures = result.items !== null ? result.items : [];
                         console.log("Signatures récupérées après mappage:", SignaturesPage.signatures);
                     }
                 })

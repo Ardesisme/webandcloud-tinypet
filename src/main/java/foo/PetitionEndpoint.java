@@ -223,9 +223,9 @@ public List<Petition> getTop100Petitions() {
 
 @ApiMethod(name = "getSignatures", path = "getSignatures", httpMethod = ApiMethod.HttpMethod.GET)
 public List<String> getSignatures(@Named("petitionId") Long petitionId) {
+
     Query query = new Query("SignaturesPetition")
-            .setFilter(new Query.FilterPredicate("petitionId", Query.FilterOperator.EQUAL, petitionId))
-            .addSort("createdAt", Query.SortDirection.DESCENDING);
+            .setFilter(new Query.FilterPredicate("petitionId", Query.FilterOperator.EQUAL, petitionId));
 
     List<Entity> signatureEntities = datastore.prepare(query).asList(FetchOptions.Builder.withDefaults());
 
