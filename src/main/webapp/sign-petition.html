@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Petition</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        form {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .message {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sign Petition de la muerte</h1>
+    <form id="sign-petition-form">
+        <label for="petitionId">Petition ID:</label>
+        <input type="text" id="petitionId" name="petitionId" required>
+
+        <label for="userId">User ID:</label>
+        <input type="text" id="userId" name="userId" required>
+
+        <button type="submit">Sign Petition</button>
+    </form>
+    <p id="responseMessage" class="message"></p>
+
+    <script>
+        document.getElementById('sign-petition-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            var petitionId = document.getElementById('petitionId').value;
+            var userId = document.getElementById('userId').value;
+            var responseMessage = document.getElementById('responseMessage');
+
+            var requestBody = {
+                petitionId: petitionId,
+                userId: userId
+            };
+
+            fetch('_ah/api/petitionApi/v1/signPetition', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            })
+            .then(response => response.json())
+            .then(data => {
+                responseMessage.textContent = 'Petition signed successfully!';
+                responseMessage.style.color = 'green';
+            })
+            .catch(error => {
+                responseMessage.textContent = 'Error signing petition: ' + error.message;
+                responseMessage.style.color = 'red';
+            });
+        });
+    </script>
+</body>
+</html>

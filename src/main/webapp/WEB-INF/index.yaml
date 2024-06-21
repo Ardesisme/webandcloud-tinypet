@@ -1,11 +1,11 @@
 indexes:
-- kind: Friend 
-  properties: 
-    - name: friends 
-    - name: age 
-- kind: Score
+- kind: SignaturesPetition
   properties:
-  - name: name
-  - name: score
+  - name: petitionId
+  - name: createdAt
     direction: desc
-    
+- kind: Petition
+  properties:
+  - name: tags
+  - name: createdAt
+    direction: desc

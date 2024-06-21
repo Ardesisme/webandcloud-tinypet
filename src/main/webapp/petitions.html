@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Voir mes Pétitions</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css">
+    <script defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
+    <script src="https://unpkg.com/mithril/mithril.js"></script>
+</head>
+<body>
+    <script>
+        var PetitionList = {
+            petitions: [],
+            loadList: function() {
+                return m.request({
+                    method: "GET",
+                    url: "_ah/api/myApi/v1/petitions",
+                    extract: function(xhr) {
+                        if (xhr.status !== 200) {
+                            console.error("Erreur de l'API, statut:", xhr.status);
+                            console.error("Réponse de l'API:", xhr.responseText);
+                            return {error: "Erreur API"};
+                        }
+                        return JSON.parse(xhr.responseText);
+                    }
+                })
+                .then(function(result) {
+                    console.log("Pétitions récupérées:", result);
+                    if (result.error) {
+                        console.error("Erreur renvoyée par l'API:", result.error);
+                    } else {;
+                        PetitionList.petitions = result.items != null ? result.items.map(function(petition) {
+
+                            return {
+                                id: petition.key.id,
+                                title: petition.properties.title,
+                                owner: petition.properties.owner,
+                                description: petition.properties.description,
+                                createdAt: petition.properties.createdAt,
+                                tags: petition.properties.tags,
+                                newTag: ""
+                            };
+                        }) : [];
+                        console.log("Pétitions récupérées après mappage:", PetitionList.petitions);
+                    }
+                })
+                .catch(function(error) {
+                    console.error("Erreur lors de la récupération des pétitions:", error);
+                });
+            },
+            signPetition: function(petitionId) {
+                return m.request({
+                    method: "POST",
+                    url: "_ah/api/myApi/v1/signPetition",
+                    body: { petitionId: petitionId, userId: "KIWIZIO" },
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                })
+                .then(function(result) {
+                    console.log("Réponse de la signature:", result);
+                    alert("Petition signed successfully!");
+                })
+                .catch(function(error) {
+                    console.error("Erreur lors de la signature de la pétition:", error);
+                    alert("Error signing petition: " + error.message);
+                });
+            },
+            addTag: function(petitionId, tag) {
+                return m.request({
+                    method: "POST",
+                    url: "_ah/api/myApi/v1/addTag",
+                    body: { petitionId: petitionId, tag: tag },
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                })
+                .then(function(result) {
+                    console.log("Tag ajouté:", result);
+                    PetitionList.loadList(); // Recharger la liste des pétitions pour voir les tags mis à jour
+                })
+                .catch(function(error) {
+                    console.error("Erreur lors de l'ajout du tag:", error);
+                    alert("Error adding tag: " + error.message);
+                });
+            },
+            formatDateTime: function(dateString) {
+                var options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
+                var date = new Date(dateString);
+                return date.toLocaleDateString("fr-FR", options) + " " + date.toLocaleTimeString("fr-FR");
+            },
+            view: function() {
+                return m("div", {class: "container"}, [
+                    m("h1", {class: "title"}, "Pétitions KIWIZ"),
+                    m("button", {class: "button is-link", onclick: PetitionList.loadList}, "Voir les pétitions"),
+                    m("button", {class: "button is-info", onclick: function() { m.route.set("/search") }}, "Rechercher par Tag"),
+                    m("button", {class: "button is-success", onclick: function() { m.route.set("/top100") }}, "Top 100 Pétitions"),
+                    m("div", {class: "list"}, PetitionList.petitions.map(PetitionList.renderPetition))
+                ]);
+            },
+            renderPetition: function(petition) {
+                return m("div", {class: "list-item"}, [
+                    m("h2", {class: "subtitle"}, petition.title),
+                    m("p", "Propriétaire: " + petition.owner),
+                    m("p", "Description: " + petition.description),
+                    m("p", "Créé le: " + PetitionList.formatDateTime(petition.createdAt)),
+                    m("p", "KIWIZ id : " + petition.id),
+                    m("div", {class: "tags"}, (petition.tags || []).map(function(tag) {
+                        return m("span", {class: "tag is-info"}, tag);
+                    })),
+                    m("input", {
+                        type: "text",
+                        placeholder: "Ajouter un tag",
+                        value: petition.newTag,
+                        oninput: function(e) { petition.newTag = e.target.value; }
+                    }),
+                    m("button", {
+                        class: "button is-primary",
+                        onclick: function() {
+                            PetitionList.addTag(petition.id, petition.newTag);
+                            petition.newTag = ""; // Réinitialiser le champ de saisie du tag
+                        }
+                    }, "Ajouter Tag"),
+                    m("button", {
+                        class: "button is-primary",
+                        onclick: function() { PetitionList.signPetition(petition.id); }
+                    }, "Signer la Pétition"),
+                    m("button", {
+                        class: "button is-warning",
+                        onclick: function() { m.route.set("/signatures/" + petition.id) }
+                    }, "Voir les Signatures")
+                ]);
+            }
+        };
+
+        var SearchPage = {
+            tag: "",
+            petitions: [],
+            search: function() {
+                return m.request({
+                    method: "GET",
+                    url: "_ah/api/myApi/v1/findPetitionsByTag",
+                    params: { tag: SearchPage.tag },
+                    extract: function(xhr) {
+                        if (xhr.status !== 200) {
+                            console.error("Erreur de l'API, statut:", xhr.status);
+                            console.error("Réponse de l'API:", xhr.responseText);
+                            return {error: "Erreur API"};
+                        }
+                        return JSON.parse(xhr.responseText);
+                    }
+                })
+                .then(function(result) {
+                    console.log("Pétitions récupérées:", result);
+                    if (result.error) {
+                        console.error("Erreur renvoyée par l'API:", result.error);
+                    } else {
+                        // Assurez-vous que la réponse est toujours un tableau
+                        SearchPage.petitions = Array.isArray(result.items) ? result.items : [];
+                        console.log("Pétitions récupérées après mappage:", SearchPage.petitions);
+                    }
+                })
+                .catch(function(error) {
+                    console.error("Erreur lors de la récupération des pétitions:", error);
+                });
+            },
+            view: function() {
+                return m("div", {class: "container"}, [
+                    m("h1", {class: "title"}, "Rechercher des Pétitions par Tag"),
+                    m("div", {class: "field"}, [
+                        m("label", {class: "label"}, "Tag"),
+                        m("div", {class: "control"}, [
+                            m("input", {
+                                class: "input",
+                                type: "text",
+                                placeholder: "Entrer un tag",
+                                oninput: function(e) { SearchPage.tag = e.target.value; },
+                                value: SearchPage.tag
+                            })
+                        ])
+                    ]),
+                    m("button", {class: "button is-link", onclick: SearchPage.search}, "Rechercher"),
+                    Array.isArray(SearchPage.petitions) ? m("div", {class: "list"}, SearchPage.petitions.map(function(petition) {
+                        return m("div", {class: "list-item"}, [
+                            m("h2", {class: "subtitle"}, petition.title),
+                            m("p", "Propriétaire: " + petition.owner),
+                            m("p", "Description: " + petition.description),
+                            m("p", "Créé le: " + PetitionList.formatDateTime(petition.createdAt)),
+                            m("div", {class: "tags"}, (petition.tags || []).map(function(tag) {
+                                return m("span", {class: "tag is-info"}, tag);
+                            }))
+                        ]);
+                    })) : m("p", "Aucune pétition trouvée"),
+                    m("button", {class: "button is-link", onclick: function() { m.route.set("/") }}, "Retour à la liste des pétitions")
+                ]);
+            }
+        };
+
+
+        var Top100Page = {
+            petitions: [],
+            oninit: function() {
+                Top100Page.loadTop100();
+            },
+            loadTop100: function() {
+                return m.request({
+                    method: "GET",
+                    url: "_ah/api/myApi/v1/getTop100Petitions",
+                    extract: function(xhr) {
+                        if (xhr.status !== 200) {
+                            console.error("Erreur de l'API, statut:", xhr.status);
+                            console.error("Réponse de l'API:", xhr.responseText);
+                            return {error: "Erreur API"};
+                        }
+                        return JSON.parse(xhr.responseText);
+                    }
+                })
+                .then(function(result) {
+                    console.log("Top 100 pétitions récupérées:", result);
+                    if (result.error) {
+                        console.error("Erreur renvoyée par l'API:", result.error);
+                    } else {
+                    console.log("Top 100 pétitions récupérées: 1", result.items);
+
+                        Top100Page.petitions = result.items !== null ? result.items : [];
+                        console.log("Top 100 pétitions après mappage:", Top100Page.petitions);
+                    }
+                })
+                .catch(function(error) {
+                    console.error("Erreur lors de la récupération des top 100 pétitions:", error);
+                });
+            },
+            view: function() {
+                return m("div", {class: "container"}, [
+                    m("h1", {class: "title"}, "Top 100 Pétitions"),
+                    m("div", {class: "list"}, Top100Page.petitions.map(function(petition) {
+                        return m("div", {class: "list-item"}, [
+                            m("h2", {class: "subtitle"}, petition.title),
+                            m("p", "Propriétaire: " + petition.owner),
+                            m("p", "Description: " + petition.description),
+                            m("p", "Créé le: " + PetitionList.formatDateTime(petition.createdAt)),
+                            m("div", {class: "tags"}, (petition.tags || []).map(function(tag) {
+                                return m("span", {class: "tag is-info"}, tag);
+                            }))
+                        ]);
+                    })),
+                    m("button", {class: "button is-link", onclick: function() { m.route.set("/") }}, "Retour à la liste des pétitions")
+                ]);
+            }
+        };
+
+        var SignaturesPage = {
+            petitionId: null,
+            signatures: [],
+            oninit: function(vnode) {
+                SignaturesPage.petitionId = vnode.attrs.petitionId;
+                SignaturesPage.loadSignatures();
+            },
+            loadSignatures: function() {
+                console.log("KIWIZ 56 : ", SignaturesPage.petitionId);
+                return m.request({
+                    method: "GET",
+                    url: "_ah/api/myApi/v1/getSignatures",
+                    params: { petitionId: SignaturesPage.petitionId },
+                    extract: function(xhr) {
+                        if (xhr.status !== 200) {
+                            console.error("Erreur de l'API, statut:", xhr.status);
+                            console.error("Réponse de l'API:", xhr.responseText);
+                            return {error: "Erreur API"};
+                        }
+                        return JSON.parse(xhr.responseText);
+                    }
+                })
+                .then(function(result) {
+                    console.log("Signatures récupérées:", result);
+                    if (result.error) {
+                        console.error("Erreur renvoyée par l'API:", result.error);
+                    } else {
+                        SignaturesPage.signatures = Array.isArray(result) ? result : [];
+                        console.log("Signatures récupérées après mappage:", SignaturesPage.signatures);
+                    }
+                })
+                .catch(function(error) {
+                    console.error("Erreur lors de la récupération des signatures:", error);
+                });
+            },
+            view: function() {
+                return m("div", {class: "container"}, [
+                    m("h1", {class: "title"}, "Signatures de la Pétition"),
+                    m("div", {class: "list"}, SignaturesPage.signatures.map(function(signature) {
+                        return m("div", {class: "list-item"}, signature);
+                    })),
+                    m("button", {class: "button is-link", onclick: function() { m.route.set("/") }}, "Retour à la liste des pétitions")
+                ]);
+            }
+        };
+
+        m.route(document.body, "/", {
+            "/": PetitionList,
+            "/search": SearchPage,
+            "/top100": Top100Page,
+            "/signatures/:petitionId": SignaturesPage
+        });
+    </script>
+</body>
+</html>

@@ -1,351 +1,244 @@
 package foo;
 
-import java.util.Date;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Random;
-
-import com.google.api.server.spi.auth.common.User;
 import com.google.api.server.spi.config.Api;
 import com.google.api.server.spi.config.ApiMethod;
-import com.google.api.server.spi.config.ApiMethod.HttpMethod;
 import com.google.api.server.spi.config.ApiNamespace;
-import com.google.api.server.spi.config.Named;
-import com.google.api.server.spi.config.Nullable;
 import com.google.api.server.spi.response.CollectionResponse;
 import com.google.api.server.spi.response.UnauthorizedException;
-import com.google.api.server.spi.auth.EspAuthenticator;
-
-import com.google.appengine.api.datastore.Cursor;
-import com.google.appengine.api.datastore.DatastoreService;
-import com.google.appengine.api.datastore.DatastoreServiceFactory;
-import com.google.appengine.api.datastore.Entity;
-import com.google.appengine.api.datastore.FetchOptions;
-import com.google.appengine.api.datastore.Key;
-import com.google.appengine.api.datastore.Query;
-import com.google.appengine.api.datastore.PreparedQuery;
-import com.google.appengine.api.datastore.PropertyProjection;
-import com.google.appengine.api.datastore.PreparedQuery.TooManyResultsException;
-import com.google.appengine.api.datastore.Query.CompositeFilter;
-import com.google.appengine.api.datastore.Query.CompositeFilterOperator;
-import com.google.appengine.api.datastore.Query.Filter;
+import com.google.appengine.api.datastore.*;
 import com.google.appengine.api.datastore.Query.FilterOperator;
 import com.google.appengine.api.datastore.Query.FilterPredicate;
-import com.google.appengine.api.datastore.Query.SortDirection;
-import com.google.appengine.api.datastore.QueryResultList;
-import com.google.appengine.api.datastore.Transaction;
 
-@Api(name = "myApi",
-     version = "v1",
-     audiences = {"927375242383-t21v9ml38tkh2pr30m4hqiflkl3jfohl.apps.googleusercontent.com","1017665012427-bkojq9fgh17ojedij4d08ea419u3s8v6.apps.googleusercontent.com" },
-  	 clientIds = {"927375242383-t21v9ml38tkh2pr30m4hqiflkl3jfohl.apps.googleusercontent.com", "1017665012427-bkojq9fgh17ojedij4d08ea419u3s8v6.apps.googleusercontent.com",
-        "927375242383-jm45ei76rdsfv7tmjv58tcsjjpvgkdje.apps.googleusercontent.com"},
-     namespace =
-     @ApiNamespace(
-		   ownerDomain = "helloworld.example.com",
-		   ownerName = "helloworld.example.com",
-		   packagePath = "")
-     )
+import javax.annotation.Nullable;
+import javax.inject.Named;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.logging.Logger;
 
+@Api(
+    name = "myApi",
+    version = "v1",
+    audiences = {"your-client-id"},
+    clientIds = {"your-client-id"},
+    namespace = @ApiNamespace(
+        ownerDomain = "example.com",
+        ownerName = "example.com",
+        packagePath = "")
+)
 public class PetitionEndpoint {
+    private DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+    private static final Logger log = Logger.getLogger(PetitionEndpoint.class.getName());
 
+    @ApiMethod(name = "createPetition", path = "createPetition", httpMethod = ApiMethod.HttpMethod.POST)
+    public Entity createPetition(Petition petition) {
+        Entity petitionEntity = new Entity("Petition");
+        petitionEntity.setProperty("title", petition.getTitle());
+        petitionEntity.setProperty("owner", petition.getOwner());
+        petitionEntity.setProperty("description", petition.getDescription());
+        petitionEntity.setProperty("createdAt", new Date());
+        petitionEntity.setProperty("tags", new ArrayList<String>());
 
-	Random r = new Random();
+        datastore.put(petitionEntity);
+        petition.setId(petitionEntity.getKey().getId());
 
-    // remember: return Primitives and enums are not allowed. 
-	@ApiMethod(name = "getRandom", httpMethod = HttpMethod.GET)
-	public RandomResult random() {
-		return new RandomResult(r.nextInt(6) + 1);
-	}
+        return petitionEntity;
+    }
 
-	@ApiMethod(name = "hello", httpMethod = HttpMethod.GET)
-	public User Hello(User user) throws UnauthorizedException {
-        if (user == null) {
-			throw new UnauthorizedException("Invalid credentials");
-		}
-        System.out.println("Yeah:"+user.toString());
-		return user;
-	}
+    @ApiMethod(name = "signPetition", httpMethod = ApiMethod.HttpMethod.POST)
+    public Entity signPetition(SignatureRequest signatureRequest) throws Exception {
+        // Check if user already signed the petition
+        Long petitionId = signatureRequest.petitionId != null ? signatureRequest.petitionId : 666;
+        String userId = signatureRequest.userId;
+        Query query = new Query("SignaturesPetition")
+                .setFilter(new Query.CompositeFilter(Query.CompositeFilterOperator.AND, List.of(
+                        new Query.FilterPredicate("petitionId", Query.FilterOperator.EQUAL, petitionId),
+                        new Query.FilterPredicate("signatures", Query.FilterOperator.EQUAL, userId)
+                )));
+        List<Entity> results = datastore.prepare(query).asList(FetchOptions.Builder.withLimit(1));
+        if (!results.isEmpty()) {
+            throw new Exception("User has already signed this petition");
+        }
 
+        // Find a non-full signatures entity
+        query = new Query("SignaturesPetition")
+                .setFilter(new Query.FilterPredicate("petitionId", Query.FilterOperator.EQUAL, petitionId))
+                .addSort("createdAt", Query.SortDirection.DESCENDING);
+        results = datastore.prepare(query).asList(FetchOptions.Builder.withLimit(1));
 
-	@ApiMethod(name = "scores", httpMethod = HttpMethod.GET)
-	public List<Entity> scores() {
-		Query q = new Query("Score").addSort("score", SortDirection.DESCENDING);
+        Entity signatureEntity;
+        if (results.isEmpty() || (boolean) results.get(0).getProperty("isFull")) {
+            // Create a new signatures entity
+            signatureEntity = new Entity("SignaturesPetition");
+            signatureEntity.setProperty("petitionId", petitionId);
+            signatureEntity.setProperty("signatures", new ArrayList<String>());
+            signatureEntity.setProperty("isFull", false);
+        } else {
+            signatureEntity = results.get(0);
+        }
 
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		PreparedQuery pq = datastore.prepare(q);
-		List<Entity> result = pq.asList(FetchOptions.Builder.withLimit(100));
-		return result;
-	}
+        List<String> signatures = (List<String>) signatureEntity.getProperty("signatures");
+        signatures.add(userId);
+        if (signatures.size() >= SignaturesPetition.MAX_SIGNATURES) {
+            signatureEntity.setProperty("isFull", true);
+        }
 
-	@ApiMethod(name = "topscores", httpMethod = HttpMethod.GET)
-	public List<Entity> topscores() {
-		Query q = new Query("Score").addSort("score", SortDirection.DESCENDING);
+        signatureEntity.setProperty("signatures", signatures);
 
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		PreparedQuery pq = datastore.prepare(q);
-		List<Entity> result = pq.asList(FetchOptions.Builder.withLimit(10));
-		return result;
-	}
+        Transaction txn = datastore.beginTransaction();
+        datastore.put(signatureEntity);
+        txn.commit();
 
-	@ApiMethod(name = "myscores", httpMethod = HttpMethod.GET)
-	public List<Entity> myscores(@Named("name") String name) {
-		Query q = new Query("Score").setFilter(new FilterPredicate("name", FilterOperator.EQUAL, name)).addSort("score",
-				SortDirection.DESCENDING);
-        //Query q = new Query("Score").setFilter(new FilterPredicate("name", FilterOperator.EQUAL, name));
+        return signatureEntity;
+    }
 
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		PreparedQuery pq = datastore.prepare(q);
-		List<Entity> result = pq.asList(FetchOptions.Builder.withLimit(10));
-		return result;
-	}
+    @ApiMethod(name = "myPetitions", httpMethod = ApiMethod.HttpMethod.GET)
+    public CollectionResponse<Entity> myPetitions(@Nullable @Named("next") String cursorString) {
+        Query q = new Query("Petition").setFilter(new FilterPredicate("owner", FilterOperator.EQUAL, "KIWIZ"));
 
-	@ApiMethod(name = "addScore", httpMethod = HttpMethod.GET)
-	public Entity addScore(User user,@Named("score") int score, @Named("name") String name) throws UnauthorizedException {
-		if (user == null) {
-			throw new UnauthorizedException("Invalid credentials");
-		}		
+        DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+        PreparedQuery pq = datastore.prepare(q);
 
-		Entity e = new Entity("Score", "" + name + score);
-		e.setProperty("name", user.toString());
-		e.setProperty("score", score);
+        FetchOptions fetchOptions = FetchOptions.Builder.withLimit(2);
 
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		datastore.put(e);
+        if (cursorString != null) {
+            fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
+        }
 
-		return e;
-	}
+        QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
+        cursorString = results.getCursor().toWebSafeString();
 
-	// @ApiMethod(name = "postMessage", httpMethod = HttpMethod.POST)
-	// public Entity postMessage(PostMessage pm) {
+        return CollectionResponse.<Entity>builder().setItems(results).setNextPageToken(cursorString).build();
+    }
 
-	// 	Entity e = new Entity("Post"); // quelle est la clef ?? non specifié -> clef automatique
-	// 	e.setProperty("owner", pm.owner);
-	// 	e.setProperty("url", pm.url);
-	// 	e.setProperty("body", pm.body);
-	// 	e.setProperty("likec", 0);
-	// 	e.setProperty("date", new Date());
+    @ApiMethod(name = "petitions", httpMethod = ApiMethod.HttpMethod.GET)
+    public CollectionResponse<Entity> petitions(@Nullable @Named("next") String cursorString) {
+        Query q = new Query("Petition");
 
-	// 	DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-	// 	Transaction txn = datastore.beginTransaction();
-	// 	datastore.put(e);
-	// 	txn.commit();
-	// 	return e;
-	// }
+        DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+        PreparedQuery pq = datastore.prepare(q);
 
-	@ApiMethod(name = "createPetition", httpMethod = HttpMethod.POST)
-	public Entity createPetition(Petition petition) {
+        FetchOptions fetchOptions = FetchOptions.Builder.withLimit(2);
 
-		Entity e = new Entity("Petition"); // quelle est la clef ?? non specifié -> clef automatique
-		e.setProperty("title", petition.title);
-		e.setProperty("owner", "KIWIZ");
-		e.setProperty("description", petition.description);
-		// e.setProperty("date", new Date());
+        if (cursorString != null) {
+            fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
+        }
 
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		Transaction txn = datastore.beginTransaction();
-		datastore.put(e);
-		txn.commit();
-		return e;
-	}
+        QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
+        cursorString = results.getCursor().toWebSafeString();
 
-	//fonctionnel : affiche des pétitions du datastore.
-	// @ApiMethod(name = "myPetitions", httpMethod = HttpMethod.GET)
-	// // public CollectionResponse<Entity> myPetitions(@Named("name") String name, @Nullable @Named("next") String cursorString)
-	// public CollectionResponse<Entity> myPetitions(@Nullable @Named("next") String cursorString)
-	// {
+        return CollectionResponse.<Entity>builder().setItems(results).setNextPageToken(cursorString).build();
+    }
 
-	//     Query q = new Query("Petition");
+    @ApiMethod(name = "addTag", path = "addTag", httpMethod = ApiMethod.HttpMethod.POST)
+public Entity addTag(TagRequest tagRequest) throws Exception {
+    Long petitionId = tagRequest.getPetitionId();
+    String tag = tagRequest.getTag();
 
-	//     // https://cloud.google.com/appengine/docs/standard/python/datastore/projectionqueries#Indexes_for_projections
-	//     //q.addProjection(new PropertyProjection("body", String.class));
-	//     //q.addProjection(new PropertyProjection("date", java.util.Date.class));
-	//     //q.addProjection(new PropertyProjection("likec", Integer.class));
-	//     //q.addProjection(new PropertyProjection("url", String.class));
+    if (petitionId == null || tag == null || tag.isEmpty()) {
+        throw new IllegalArgumentException("petitionId and tag are required");
+    }
 
-	//     // looks like a good idea but...
-	//     // generate a DataStoreNeedIndexException -> 
-	//     // require compositeIndex on owner + date
-	//     // Explosion combinatoire.
-	//     // q.addSort("date", SortDirection.DESCENDING);
-	    
-	//     DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-	//     PreparedQuery pq = datastore.prepare(q);
-	    
-	//     FetchOptions fetchOptions = FetchOptions.Builder.withLimit(2);
-	    
-	//     if (cursorString != null) {
-	// 	fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
-	// 	}
-	    
-	//     QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
-	//     cursorString = results.getCursor().toWebSafeString();
-	    
-	//     return CollectionResponse.<Entity>builder().setItems(results).setNextPageToken(cursorString).build();
-	    
-	// }
+    Key petitionKey = KeyFactory.createKey("Petition", petitionId);
+    Entity petitionEntity = datastore.get(petitionKey);
 
-		@ApiMethod(name = "myPetitions", httpMethod = HttpMethod.GET)
-	// public CollectionResponse<Entity> myPetitions(@Named("name") String name, @Nullable @Named("next") String cursorString)
-	public CollectionResponse<Entity> myPetitions(@Nullable @Named("next") String cursorString)
-	{
+    List<String> tags = (List<String>) petitionEntity.getProperty("tags");
+    if (tags == null) {
+        tags = new ArrayList<>();
+    }
+    tags.add(tag);
+    petitionEntity.setProperty("tags", tags);
 
-	    Query q = new Query("Petition").setFilter(new FilterPredicate("owner", FilterOperator.EQUAL, "KIWIZ"));
+    datastore.put(petitionEntity);
 
-	    // https://cloud.google.com/appengine/docs/standard/python/datastore/projectionqueries#Indexes_for_projections
-	    //q.addProjection(new PropertyProjection("body", String.class));
-	    //q.addProjection(new PropertyProjection("date", java.util.Date.class));
-	    //q.addProjection(new PropertyProjection("likec", Integer.class));
-	    //q.addProjection(new PropertyProjection("url", String.class));
+    return petitionEntity;
+}
 
-	    // looks like a good idea but...
-	    // generate a DataStoreNeedIndexException -> 
-	    // require compositeIndex on owner + date
-	    // Explosion combinatoire.
-	    // q.addSort("date", SortDirection.DESCENDING);
-	    
-	    DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-	    PreparedQuery pq = datastore.prepare(q);
-	    
-	    FetchOptions fetchOptions = FetchOptions.Builder.withLimit(2);
-	    
-	    if (cursorString != null) {
-		fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
-		}
-	    
-	    QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
-	    cursorString = results.getCursor().toWebSafeString();
-	    
-	    return CollectionResponse.<Entity>builder().setItems(results).setNextPageToken(cursorString).build();
-	    
-	}
+@ApiMethod(name = "findPetitionsByTag", path = "findPetitionsByTag", httpMethod = ApiMethod.HttpMethod.GET)
+public List<Petition> findPetitionsByTag(@Named("tag") String tag) {
+    Query query = new Query("Petition")
+            .setFilter(new Query.FilterPredicate("tags", Query.FilterOperator.EQUAL, tag))
+            .addSort("createdAt", Query.SortDirection.DESCENDING);
 
+    List<Entity> petitionEntities = datastore.prepare(query).asList(FetchOptions.Builder.withDefaults());
 
-	
-	
-	@ApiMethod(name = "mypost", httpMethod = HttpMethod.GET)
-	public CollectionResponse<Entity> mypost(@Named("name") String name, @Nullable @Named("next") String cursorString) {
+    List<Petition> petitions = new ArrayList<>();
+    for (Entity entity : petitionEntities) {
+        Petition petition = new Petition();
+        petition.setId(entity.getKey().getId());
+        petition.setTitle((String) entity.getProperty("title"));
+        petition.setOwner((String) entity.getProperty("owner"));
+        petition.setDescription((String) entity.getProperty("description"));
+        petition.setCreatedAt((Date) entity.getProperty("createdAt"));
+        petition.setTags((List<String>) entity.getProperty("tags"));
+        petitions.add(petition);
+    }
 
-	    Query q = new Query("Post").setFilter(new FilterPredicate("owner", FilterOperator.EQUAL, name));
+    return petitions;
+}
 
-	    // https://cloud.google.com/appengine/docs/standard/python/datastore/projectionqueries#Indexes_for_projections
-	    //q.addProjection(new PropertyProjection("body", String.class));
-	    //q.addProjection(new PropertyProjection("date", java.util.Date.class));
-	    //q.addProjection(new PropertyProjection("likec", Integer.class));
-	    //q.addProjection(new PropertyProjection("url", String.class));
-
-	    // looks like a good idea but...
-	    // generate a DataStoreNeedIndexException -> 
-	    // require compositeIndex on owner + date
-	    // Explosion combinatoire.
-	    // q.addSort("date", SortDirection.DESCENDING);
-	    
-	    DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-	    PreparedQuery pq = datastore.prepare(q);
-	    
-	    FetchOptions fetchOptions = FetchOptions.Builder.withLimit(2);
-	    
-	    if (cursorString != null) {
-		fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
-		}
-	    
-	    QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
-	    cursorString = results.getCursor().toWebSafeString();
-	    
-	    return CollectionResponse.<Entity>builder().setItems(results).setNextPageToken(cursorString).build();
-	    
-	}
-    
-	@ApiMethod(name = "signedpetition", httpMethod = HttpMethod.GET)
-	public CollectionResponse<Entity> signedpetition(@Named("petid") String petid, @Nullable @Named("next") String cursorString) {
-
-	    Query q = new Query("D2User").setFilter(new FilterPredicate("signed", FilterOperator.EQUAL, petid));
-	    
-	    DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-	    PreparedQuery pq = datastore.prepare(q);
-	    
-	    FetchOptions fetchOptions = FetchOptions.Builder.withLimit(2);
-	    
-	    if (cursorString != null) {
-			fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
-		}
-	    
-	    QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
-	    cursorString = results.getCursor().toWebSafeString();
-	    
-	    return CollectionResponse.<Entity>builder().setItems(results).setNextPageToken(cursorString).build();
-	}
     
 
-	@ApiMethod(name = "getPost",
-		   httpMethod = ApiMethod.HttpMethod.GET)
-	public CollectionResponse<Entity> getPost(User user, @Nullable @Named("next") String cursorString)
-			throws UnauthorizedException {
+    @ApiMethod(name = "listSignedPetitions", httpMethod = ApiMethod.HttpMethod.GET)
+    public List<Entity> listSignedPetitions(@Named("userId") String userId) {
+        Query query = new Query("SignaturesPetition")
+                .setFilter(new Query.FilterPredicate("signatures", Query.FilterOperator.EQUAL, userId));
 
-		if (user == null) {
-			throw new UnauthorizedException("Invalid credentials");
-		}
+        List<Entity> signatureEntities = datastore.prepare(query).asList(FetchOptions.Builder.withDefaults());
 
-		Query q = new Query("Post").
-		    setFilter(new FilterPredicate("owner", FilterOperator.EQUAL, user.getEmail()));
+        List<Entity> petitions = new ArrayList<>();
+        for (Entity signature : signatureEntities) {
+            Long petitionId = (Long) signature.getProperty("petitionId");
+            Query petitionQuery = new Query("Petition").setFilter(new Query.FilterPredicate("__key__", Query.FilterOperator.EQUAL, KeyFactory.createKey("Petition", petitionId)));
+            Entity petition = datastore.prepare(petitionQuery).asSingleEntity();
+            if (petition != null) {
+                petitions.add(petition);
+            }
+        }
 
-		// Multiple projection require a composite index
-		// owner is automatically projected...
-		// q.addProjection(new PropertyProjection("body", String.class));
-		// q.addProjection(new PropertyProjection("date", java.util.Date.class));
-		// q.addProjection(new PropertyProjection("likec", Integer.class));
-		// q.addProjection(new PropertyProjection("url", String.class));
+        return petitions;
+    }
 
-		// looks like a good idea but...
-		// require a composite index
-		// - kind: Post
-		//  properties:
-		//  - name: owner
-		//  - name: date
-		//    direction: desc
+    @ApiMethod(name = "getTop100Petitions", path = "getTop100Petitions", httpMethod = ApiMethod.HttpMethod.GET)
+public List<Petition> getTop100Petitions() {
+    Query query = new Query("Petition")
+            .addSort("createdAt", Query.SortDirection.DESCENDING);
 
-		// q.addSort("date", SortDirection.DESCENDING);
+    List<Entity> petitionEntities = datastore.prepare(query).asList(FetchOptions.Builder.withLimit(100));
 
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		PreparedQuery pq = datastore.prepare(q);
+    List<Petition> petitions = new ArrayList<>();
+    for (Entity entity : petitionEntities) {
+        Petition petition = new Petition();
+        petition.setId(entity.getKey().getId());
+        petition.setTitle((String) entity.getProperty("title"));
+        petition.setOwner((String) entity.getProperty("owner"));
+        petition.setDescription((String) entity.getProperty("description"));
+        petition.setCreatedAt((Date) entity.getProperty("createdAt"));
+        petition.setTags((List<String>) entity.getProperty("tags"));
+        petitions.add(petition);
+    }
 
-		FetchOptions fetchOptions = FetchOptions.Builder.withLimit(2);
+    return petitions;
+}
 
-		if (cursorString != null) {
-			fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
-		}
+@ApiMethod(name = "getSignatures", path = "getSignatures", httpMethod = ApiMethod.HttpMethod.GET)
+public List<String> getSignatures(@Named("petitionId") Long petitionId) {
+    Query query = new Query("SignaturesPetition")
+            .setFilter(new Query.FilterPredicate("petitionId", Query.FilterOperator.EQUAL, petitionId))
+            .addSort("createdAt", Query.SortDirection.DESCENDING);
 
-		QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
-		cursorString = results.getCursor().toWebSafeString();
+    List<Entity> signatureEntities = datastore.prepare(query).asList(FetchOptions.Builder.withDefaults());
 
-		return CollectionResponse.<Entity>builder().setItems(results).setNextPageToken(cursorString).build();
-	}
+    List<String> signatures = new ArrayList<>();
+    for (Entity entity : signatureEntities) {
+        List<String> entitySignatures = (List<String>) entity.getProperty("signatures");
+        if (entitySignatures != null) {
+            signatures.addAll(entitySignatures);
+        }
+    }
 
-	@ApiMethod(name = "postMsg", httpMethod = HttpMethod.POST)
-	public Entity postMsg(User user, PostMessage pm) throws UnauthorizedException {
+    return signatures;
+}
 
-		if (user == null) {
-			throw new UnauthorizedException("Invalid credentials");
-		}
 
-		Entity e = new Entity("Post", Long.MAX_VALUE-(new Date()).getTime()+":"+user.getEmail());
-		e.setProperty("owner", user.getEmail());
-		e.setProperty("url", pm.url);
-		e.setProperty("body", pm.body);
-		e.setProperty("likec", 0);
-		e.setProperty("date", new Date());
-
-///		Solution pour pas projeter les listes
-//		Entity pi = new Entity("PostIndex", e.getKey());
-//		HashSet<String> rec=new HashSet<String>();
-//		pi.setProperty("receivers",rec);
-		
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		Transaction txn = datastore.beginTransaction();
-		datastore.put(e);
-//		datastore.put(pi);
-		txn.commit();
-		return e;
-	}
 }
